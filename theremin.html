@@ -21,16 +21,28 @@
         let isStarted = false;
 
         async function setup() {
-            createCanvas(640, 480);
-            video = createCapture(VIDEO);async function setup() {
     createCanvas(640, 480);
-    video = createCapture(VIDEO); // カメラ映像を取得
+
+    // カメラの設定（スマホ対応）
+    let constraints = {
+        video: {
+            facingMode: "user", // スマホで前面カメラを使用
+            width: { ideal: 640 }, 
+            height: { ideal: 480 }
+        }
+    };
+
+    video = createCapture(constraints); // カメラを取得
     video.size(640, 480);
-    video.hide();  // ← これを追加！（カメラ映像を非表示にする）
+    video.hide(); // カメラ映像を非表示にする
+
+    // カメラの映像が完全にロードされたら手の検出を開始
+    video.elt.onloadedmetadata = () => {
+        console.log("Camera is ready!"); // デバッグ用
+        detectHands(); // 手の検出を開始
+    };
 }
 
-            video.size(640, 480);
-            video.hide();
 
             // 音の設定（シンセ風に改良）
             osc1 = new p5.Oscillator('sawtooth'); // ノコギリ波（基本波）
