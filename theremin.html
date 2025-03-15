@@ -2,66 +2,102 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>進化したWebカメラテルミン</title>
+    <title>Webカメラdeテルミン</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.sound.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
 </head>
 <body>
-    <h2>画面をクリックして音を開始してください</h2>
     <script>
         let video;
         let detector;
-        let osc1, osc2, osc3, filter, reverb;
-        let targetFreq = 440, currentFreq = 440;
-        let targetVolume = 0.5, currentVolume = 0.5;
-        let targetBrightness = 0.5, currentBrightness = 0.5;
+        let osc1, osc2, osc3;
         let isStarted = false;
+        let targetFreq = 440;
+        let targetVolume = 0.5;
+        let currentFreq = 440;
+        let currentVolume = 0.5;
 
         async function setup() {
-    createCanvas(640, 480);
-
-    // カメラの設定（スマホ対応）
-    let constraints = {
-        video: {
-            facingMode: "user", // スマホで前面カメラを使用
-            width: { ideal: 640 }, 
-            height: { ideal: 480 }
+            createCanvas(640, 480);
+            video = createCapture(VIDEO);
+            video.size(640, 480);
+            
+            osc1 = new p5.Oscillator('sine');
+            osc2 = new p5.Oscillator('triangle');
+            osc3 = new p5.Oscillator('sawtooth');
+            
+            osc1.disconnect();
+            osc2.disconnect();
+            osc3.disconnect();
+            
+            filter = new p5.LowPass();
+            osc1.connect(filter);
+            osc2.connect(filter);
+            osc3.connect(filter);
+            
+            await initHandPoseDetection();
         }
-    };
 
-    video = createCapture(constraints); // カメラを取得
-    video.size(640, 480);
-    video.hide(); // カメラ映像を非表示にする
-
-    // カメラの映像が完全にロードされたら手の検出を開始
-    video.elt.onloadedmetadata = () => {
-        console.log("Camera is ready!"); // デバッグ用
-        detectHands(); // 手の検出を開始
-    };
-}
-
-
-            // 音の設定（シンセ風に改良）
-            osc1 = new p5.Oscillator('sawtooth'); // ノコギリ波（基本波）
-            osc2 = new p5.Oscillator('triangle'); // 三角波（倍音成分）
-            osc3 = new p5.Oscillator('square'); // パルス波（鋭い成分）
-
-            filter = new p5.LowPass(); // ローパスフィルター（明るさ調整）
-            reverb = new p5.Reverb(); // リバーブ（響き）
-
-            osc1.disconnect(); osc2.disconnect(); osc3.disconnect();
-            osc1.connect(filter); osc2.connect(filter); osc3.connect(filter);
-            reverb.process(filter, 3, 2); // 3秒の響き、2の減衰率
-
+        async function initHandPoseDetection() {
             detector = await handPoseDetection.createDetector(
                 handPoseDetection.SupportedModels.MediaPipeHands,
-                { runtime: 'tfjs' }
+                {
+                    runtime: 'tfjs',
+                    modelType: 'full',
+                    maxHands: 2
+                }
             );
+        }
+
+        async function detectHands() {
+            const hands = await detector.estimateHands(video.elt);
+            if (hands.length > 0) {
+                let rightHand = hands.find(h => h.handedness === 'Right');
+                let leftHand = hands.find(h => h.handedness === 'Left');
+
+                if (rightHand) {
+                    let rightHandY = rightHand.keypoints[0].y / height;
+                    targetVolume = constrain(map(rightHandY, 1, 0, 0, 1), 0, 1);
+                }
+                if (leftHand) {
+                    let leftHandY = leftHand.keypoints[0].y / height;
+                    targetFreq = constrain(map(leftHandY, 1, 0, 100, 1000), 100, 1000);
+                }
+            }
+        }
+
+        function draw() {
+            background(0);
+            image(video, 0, 0, width, height);
+
+            if (!isStarted) {
+                fill(255, 0, 0);
+                textSize(20);
+                text("画面をクリックしてください", 20, 30);
+                return;
+            }
 
             detectHands();
+
+            currentFreq = lerp(currentFreq, targetFreq, 0.1);
+            currentVolume = lerp(currentVolume, targetVolume, 0.1);
+
+            osc1.freq(currentFreq);
+            osc2.freq(currentFreq * 1.01);
+            osc3.freq(currentFreq * 0.99);
+
+            osc1.amp(currentVolume * 0.6);
+            osc2.amp(currentVolume * 0.3);
+            osc3.amp(currentVolume * 0.4);
+
+            filter.freq(500 + currentVolume * 1500);
+            filter.res(2 + currentVolume * 3);
+
+            fill(255);
+            textSize(24);
+            text(`Pitch: ${Math.round(currentFreq)} Hz`, 20, 30);
+            text(`Volume: ${currentVolume.toFixed(2)}`, 20, 60);
         }
 
         function mousePressed() {
@@ -71,66 +107,6 @@
                 osc3.start();
                 isStarted = true;
             }
-        }
-
-        async function detectHands() {
-            while (true) {
-                const hands = await detector.estimateHands(video.elt);
-                if (hands.length > 0) {
-                    let rightHand = hands.find(h => h.handedness === 'Right');
-                    let leftHand = hands.find(h => h.handedness === 'Left');
-
-                    if (rightHand) {
-                        let rightHandY = rightHand.keypoints[0].y / height;
-                        targetVolume = constrain(map(rightHandY, 1, 0, 0, 1), 0, 1);
-                        let handWidth = dist(
-                            rightHand.keypoints[5].x, rightHand.keypoints[5].y,
-                            rightHand.keypoints[17].x, rightHand.keypoints[17].y
-                        );
-                        targetBrightness = constrain(map(handWidth, 0, width / 2, 0, 1), 0, 1);
-                    }
-                    if (leftHand) {
-                        let leftHandY = leftHand.keypoints[0].y / height;
-                        targetFreq = constrain(map(leftHandY, 1, 0, 100, 1000), 100, 1000);
-                    }
-                }
-                await new Promise(resolve => setTimeout(resolve, 30)); // 30msごとに更新
-            }
-        }
-
-        function draw() {
-            background(0);
-
-            if (!isStarted) {
-                fill(255, 0, 0);
-                textSize(20);
-                text("画面をクリックしてください", 20, 30);
-                return;
-            }
-
-            // スムージング（lerpを使って滑らかに変化）
-            currentFreq = lerp(currentFreq, targetFreq, 0.1);
-            currentVolume = lerp(currentVolume, targetVolume, 0.1);
-            currentBrightness = lerp(currentBrightness, targetBrightness, 0.1);
-
-            // 各オシレーターに適用
-            osc1.freq(currentFreq);
-            osc2.freq(currentFreq * 1.01); // 微妙にずらして厚みを出す
-            osc3.freq(currentFreq * 0.99);
-            
-            osc1.amp(currentVolume * 0.6); // ベースの音
-            osc2.amp(currentVolume * 0.3); // 倍音
-            osc3.amp(currentVolume * 0.4); // パルス波成分
-
-            // フィルターで音色を制御（手の距離で変化）
-            filter.freq(500 + currentBrightness * 1500); // 500Hz～2000Hzの範囲で変化
-            filter.res(2 + currentBrightness * 3); // 音のピークを調整
-
-            fill(255);
-            textSize(24);
-            text(`Pitch: ${Math.round(currentFreq)} Hz`, 20, 30);
-            text(`Volume: ${currentVolume.toFixed(2)}`, 20, 60);
-            text(`Brightness: ${currentBrightness.toFixed(2)}`, 20, 90);
         }
     </script>
 </body>
