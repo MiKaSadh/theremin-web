@@ -22,7 +22,13 @@
 
         async function setup() {
             createCanvas(640, 480);
-            video = createCapture(VIDEO);
+            video = createCapture(VIDEO);async function setup() {
+    createCanvas(640, 480);
+    video = createCapture(VIDEO); // カメラ映像を取得
+    video.size(640, 480);
+    video.hide();  // ← これを追加！（カメラ映像を非表示にする）
+}
+
             video.size(640, 480);
             video.hide();
 
